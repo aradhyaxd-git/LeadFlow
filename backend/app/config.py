@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "sqlite:///./leadflow.db"
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "*"
     seed_on_start: bool = False
 
     @property
