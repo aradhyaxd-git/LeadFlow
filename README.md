@@ -6,8 +6,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict_5.7-blue?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4_Jira_Aesthetic-38bdf8?style=flat&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Tests](https://img.shields.io/badge/Tests-23_Passing_(14_Pytest_+_9_Vitest)-brightgreen?style=flat)](#testing--verification)
+[![Miro Architecture](https://img.shields.io/badge/Miro-System_Architecture_Board-ffd02f?style=flat&logo=miro&logoColor=black)](https://miro.com/app/board/uXjVEapx_m0=/)
 
 > A lightweight, single-screen CRM engineered for sales reps: track high-intent leads, log discussion timelines, manage pipeline stages, and never miss a scheduled follow-up.
+>
+> 🗺️ **Interactive Visual Architecture:** [Open LeadFlow Miro Board](https://miro.com/app/board/uXjVEapx_m0=/) (C4 Topology, ERD Schema, State Machines & Sequence Flows).
 
 ---
 
@@ -161,7 +164,7 @@ cd backend && .venv/bin/ruff check .
 
 ---
 
-## 8. Architectural Highlights
+## 8. Architectural Highlights & System Diagrams
 
-For detailed system design decisions, data dictionary, and portability constraints, refer to:
-👉 [**ARCHITECTURE.md**](ARCHITECTURE.md)
+- 📄 **Technical Design Document**: [**ARCHITECTURE.md**](ARCHITECTURE.md) (Domain rules, portability, query optimizations, reactive state machine)
+- 🗺️ **Visual Miro Architecture Canvas**: [**LeadFlow System Design Board**](https://miro.com/app/board/uXjVEapx_m0=/) (C4 Containers, ERD, State Machine, Sequence Flows)

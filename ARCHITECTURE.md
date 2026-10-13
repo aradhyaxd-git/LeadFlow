@@ -1,6 +1,8 @@
 # System Architecture & Technical Specifications
 
 > **LeadFlow** — Single-screen, high-velocity CRM engineered for zero-friction sales rep workflows.
+>
+> 🗺️ **Interactive Visual Architecture (Miro):** [Open LeadFlow Architecture Board](https://miro.com/app/board/uXjVEapx_m0=/)
 
 ---
 
