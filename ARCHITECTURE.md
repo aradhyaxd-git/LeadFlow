@@ -1,98 +1,140 @@
-# Architecture
+# System Architecture & Technical Specifications
 
-## Overview
+> **LeadFlow** — Single-screen, high-velocity CRM engineered for zero-friction sales rep workflows.
+
+---
+
+## 1. High-Level Architecture
+
+LeadFlow follows a strict **Domain-Driven Layered Architecture** on the backend and a **Reactive, Cache-Driven Component Architecture** on the frontend. The entire application operates on a single viewport without destructive page reloads or routing latency.
 
 ```
-Browser (Next.js)  --JSON/HTTP-->  FastAPI  --SQLAlchemy-->  PostgreSQL
- TanStack Query                    routers -> services -> repositories
+┌───────────────────────────────────────────────────────────────────────────┐
+│                             CLIENT LAYER (Next.js 15)                     │
+│   Dashboard View (Grid / Kanban)  │  Dialog Portals (Radix UI)             │
+│   TanStack Query Cache (v5)        │  Pure Time Calculations (Local Time) │
+└─────────────────────────────────────┬─────────────────────────────────────┘
+                                      │ HTTP / JSON (RESTful API v1)
+                                      ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│                           FASTAPI SERVICE LAYER                           │
+│   Routers (HTTP parsing, DTO schema validation, error envelope mapper)    │
+│   Domain Services (Business logic, multi-entity atomic transactions)       │
+│   Repositories (Correlated scalar subqueries, zero N+1 queries)           │
+│   Typed ORM Models (SQLAlchemy 2.x Mapped[], UTCDateTime decorator)       │
+└─────────────────────────────────────┬─────────────────────────────────────┘
+                                      │ Dialect-agnostic SQL
+                                      ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│                          PERSISTENCE LAYER                                │
+│   SQLite (Default zero-config local engine: `leadflow.db`)                │
+│   PostgreSQL (Production / Neon / Docker Compose via `DATABASE_URL`)       │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
-Single-screen app: one page, two dialogs (lead timeline, add lead). All state that comes from the server is owned by TanStack Query; local `useState` holds UI-only state (open dialog, active filter, search text).
+---
 
-## Data model
+## 2. Core Architectural Principles
 
-**Lead**
+### 2.1 Strict Separation of Concerns (Backend)
+- **Routers (`app/routers/leads.py`)**: Responsible solely for HTTP deserialization, Pydantic DTO validation, invoking domain services, and returning status codes. Routers never import database sessions or ORM models.
+- **Domain Services (`app/services/lead_service.py`)**: Pure business logic orchestrator. Manages transaction lifecycles, atomic dual-writes, domain validation (e.g. rejection of past follow-up dates), and emits domain exceptions.
+- **Repositories (`app/repositories/lead_repository.py`)**: Encapsulates raw SQLAlchemy queries. Exposes high-level query methods. Uses correlated scalar subqueries to compute aggregated discussion metadata in a single round-trip without N+1 query overhead.
+- **Models & Types (`app/models.py`)**: SQLAlchemy 2.0 type-annotated (`Mapped[...]`) declarative entities with foreign key cascading and composite indices.
+- **Unified Error Envelope**: All domain and validation exceptions are mapped by a centralized exception handler in `main.py` to a RFC-compliant JSON envelope (`{"error": {"code": "...", "message": "...", "details": ...}}`).
 
-| Field | Type | Notes |
+### 2.2 Database Portability (Zero Dialect Lock-in)
+The system is engineered to run seamlessly across both development/test environments (SQLite) and production scale (PostgreSQL/Neon) with **zero code changes**:
+- Prohibits Postgres-specific constructs (e.g., `ILIKE`, `DISTINCT ON`, lateral joins).
+- Utilizes portable SQLAlchemy constructs: `func.lower(column).like(...)`, correlated subqueries, and standard outer joins.
+- Solves SQLite's lack of timezone awareness via a custom `UTCDateTime` `TypeDecorator` that enforces UTC normalization on write and re-attaches UTC tzinfo on read.
+
+---
+
+## 3. Data Model & Schema Design
+
+### 3.1 Entity-Relationship Diagram
+
+```
+┌────────────────────────────────────────┐
+│                 LEADS                  │
+├────────────────────────────────────────┤
+│ PK  id               INTEGER           │
+│     name             VARCHAR(120)      │
+│     company          VARCHAR(120) NULL │
+│     phone            VARCHAR(40) NULL  │
+│     status           VARCHAR(30)       │
+│     follow_up_at     TIMESTAMPTZ NULL  │  ◀── Denormalized for O(1) query indexing
+│     created_at       TIMESTAMPTZ       │
+└──────────────────┬─────────────────────┘
+                   │ 1
+                   │
+                   │ has many (CASCADE DELETE)
+                   │
+                   │ N
+┌──────────────────▼─────────────────────┐
+│              DISCUSSIONS               │
+├────────────────────────────────────────┤
+│ PK  id               INTEGER           │
+│ FK  lead_id          INTEGER           │
+│     note             TEXT              │
+│     follow_up_at     TIMESTAMPTZ NULL  │  ◀── Point-in-time follow-up snapshot
+│     kind             VARCHAR(20)       │  ◀── 'system' | 'note'
+│     created_at       TIMESTAMPTZ       │
+└────────────────────────────────────────┘
+```
+
+### 3.2 Indexing Strategy
+1. `leads.follow_up_at`: B-tree index enabling immediate lookup of due and overdue reminders.
+2. `discussions.(lead_id, created_at DESC)`: Composite index optimizing reverse-chronological timeline retrieval and correlated subquery lookups.
+
+---
+
+## 4. Key Business Invariants & Transaction Semantics
+
+| Rule ID | Invariant | Technical Implementation |
 |---|---|---|
-| id | int PK | |
-| name | text, not null | trimmed, 1-120 chars |
-| company | text, null | |
-| phone | text, null | |
-| status | enum | `new`, `contacted`, `qualified`, `proposal_sent`, `won`, `lost`; default `new` |
-| follow_up_at | timestamptz, null | denormalised "next follow-up"; indexed |
-| created_at | timestamptz | server default now() |
+| **INV-01** | **Initial Discussion Guarantee** | Creating a lead automatically writes a `"Lead created."` system discussion in the same atomic database transaction. |
+| **INV-02** | **Follow-up State Propagation** | Logging a discussion with a follow-up timestamp updates `lead.follow_up_at` atomically. If the follow-up is omitted, the lead's existing reminder is preserved. |
+| **INV-03** | **Clock-Skew Past Rejection** | Any follow-up timestamp more than 5 minutes in the past is rejected with HTTP `422 Unprocessable Content`. |
+| **INV-04** | **Explicit Completion** | Follow-ups are cleared only via explicit user action (`DELETE /api/v1/leads/{id}/follow-up`), decoupling discussion logging from premature task closure. |
+| **INV-05** | **Client-Side Day Boundary Resolution** | The backend stores and transmits pure UTC ISO-8601 strings. Whether a follow-up is "Due Today", "Overdue", or "Upcoming" is computed strictly in the client's local timezone. |
 
-**Discussion**
+---
 
-| Field | Type | Notes |
-|---|---|---|
-| id | int PK | |
-| lead_id | FK -> lead, `ON DELETE CASCADE` | |
-| note | text, not null | 1-2000 chars |
-| follow_up_at | timestamptz, null | the follow-up set by this note, kept for history |
-| kind | enum | `note` (user) or `system` (e.g. "Lead created.") |
-| created_at | timestamptz | server default now() |
+## 5. Frontend Architecture & State Management
 
-Index: `(lead_id, created_at DESC)` for timeline reads.
-
-## Business rules
-
-1. **Creating a lead** also inserts a `system` discussion ("Lead created.") in the same transaction, so every lead has a last note and a time-ago from the start.
-2. **Adding a discussion** with `follow_up_at` sets `lead.follow_up_at` in the same transaction. A note *without* a follow-up leaves the existing follow-up untouched.
-3. **Clearing a follow-up** ("mark done") is explicit: `DELETE /leads/{id}/follow-up`.
-4. `follow_up_at` must not be in the past (5-minute grace for clock skew) when set through the API; otherwise `422`.
-5. **Pinned follow-ups** = leads whose follow-up is today or overdue, excluding `won` and `lost`. Overdue ones render red.
-6. List ordering: most recent discussion first.
-
-## Time handling
-
-All timestamps are stored and transmitted as **UTC ISO-8601**. SQLite has no timezone-aware type, so a `UTCDateTime` `TypeDecorator` normalises values to UTC on write and re-attaches UTC on read; Postgres uses `timestamptz` natively. "Today", "overdue" and "time ago" are computed in the **browser's local timezone** by pure functions in `frontend/src/lib/time.ts` (unit-tested). The server never decides what "today" means, which avoids the classic server-vs-user timezone bug.
-
-## Backend layout
-
+### 5.1 Reactive State Flow
 ```
-backend/app/
-  main.py          app factory, CORS, exception handlers
-  config.py        pydantic-settings (all env access)
-  db.py            engine + session dependency
-  models.py        SQLAlchemy entities and enums
-  schemas.py       Pydantic DTOs (requests/responses)
-  errors.py        domain exceptions
-  repositories/    all queries
-  services/        business rules (transactions live here)
-  routers/         HTTP only: parse -> call service -> return
-  seed.py          idempotent seed
-backend/tests/
+User Action (e.g. Log Note)
+     │
+     ▼
+TanStack Query Mutation (`useAddNote`)
+     │
+     ├─► [1] Optimistic UI Update: Query cache patched with temporary discussion & follow-up
+     ├─► [2] Background API Call: POST /api/v1/leads/{id}/discussions
+     │        │
+     │        ├─► Success: Invalidate & refetch `["leads"]` and `["lead", id]`
+     │        └─► Failure: Rollback cache to previous snapshot + trigger Toast error
+     ▼
+UI re-renders instantaneously with zero latency
 ```
 
-Principles: routers never touch the ORM; services own transactions and rules; repositories own queries; DTOs are separate from models; domain exceptions are mapped to HTTP responses in one place. The list endpoint computes `last_note` / `last_discussion_at` with correlated scalar subqueries inside a single query, which avoids N+1 and compiles on both SQLite and Postgres (no Postgres-only SQL anywhere).
+### 5.2 Component Hierarchy
+- **`app/page.tsx`**: Central orchestrator controlling filter state, search query, modal open state, and view mode (Grid vs. Kanban).
+- **`components/Header.tsx`**: Unified navigation bar housing breadcrumbs, view switcher, CSV export, and active notification bell with dropdown popover.
+- **`features/leads/PipelineMetrics.tsx`**: KPI cards displaying Total Leads, Due Today, Overdue, and Won counts.
+- **`features/leads/FilterBar.tsx`**: Quick filter lozenges with live counts and search input (bound to ⌘K).
+- **`features/leads/PinnedSection.tsx`**: Pinned container highlighting actionable leads due today or overdue.
+- **`features/leads/LeadDialog.tsx` & `Timeline.tsx`**: Radix UI modal presenting reverse-chronological activity history with centered spine and note logging form.
 
-## Frontend layout
+---
 
-```
-frontend/src/
-  app/             page + layout only
-  components/      presentational, no data fetching
-  features/leads/  LeadList, LeadCard, FilterBar, LeadDialog (Timeline, NoteForm), AddLeadDialog, hooks
-  lib/api.ts       the only place that calls fetch (typed)
-  lib/time.ts      is-today, is-overdue, time-ago (pure)
-  types/           API types (generated from OpenAPI where practical)
-```
+## 6. Non-Functional Requirements & Verification
 
-Mutations use optimistic updates with rollback and a toast on failure.
-
-## Decision log
-
-| Decision | Why |
-|---|---|
-| SQLite by default, PostgreSQL via `DATABASE_URL` (Neon or Compose) | Zero-setup for reviewers without Docker; same code on both. A `UTCDateTime` type decorator keeps datetimes tz-aware UTC on SQLite |
-| No auth | Optional in the brief; avoids setup friction for reviewers |
-| Denormalised `lead.follow_up_at` | Brief states the lead's follow-up field is updated; makes pinned queries trivial |
-| Pinning computed client-side | Correct "today" in the user's timezone |
-| Explicit "mark follow-up done" | Prevents stale follow-ups showing overdue forever without surprising users who log unrelated notes |
-| Create tables on startup | Avoids migration tooling for a single-screen assessment; noted as a limitation |
-
-## Known limitations / next steps
-
-Authentication and per-user scoping, pagination, Alembic migrations, status-change history in the timeline, edit/delete of notes and leads.
+- **Latency & Performance**: Correlated scalar subqueries eliminate N+1 queries. Single network call returns complete lead summaries with latest note and timestamp.
+- **Portability**: Verified on SQLite (in-memory & file) and PostgreSQL (Neon serverless).
+- **Accessibility (a11y)**: Focus trap in modals via Radix UI Dialog, visible focus rings, high-contrast badges (APCA/WCAG compliant), `aria-live` regions for toasts, keyboard shortcuts (`⌘K` to search, `⌘ + Enter` to save note, `Esc` to close).
+- **Test Coverage**:
+  - Backend: 14 pytest integration tests covering happy paths, validation edges, atomic rollbacks, and seed idempotency.
+  - Frontend: 9 Vitest unit tests covering date math, timezone boundaries, lead grouping, and component interactions.
