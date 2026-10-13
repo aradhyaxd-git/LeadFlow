@@ -1,3 +1,71 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  }
+
+  body {
+    background-color: #f4f5f7; /* Jira Atlassian canvas neutral */
+    color: #172b4d; /* Jira typography primary */
+  }
+
+  ::selection {
+    background-color: #deebff;
+    color: #0747a6;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Jira-inspired tactile interaction classes */
+.btn-press {
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1),
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+.jira-card {
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1),
+    box-shadow 160ms cubic-bezier(0.23, 1, 0.32, 1),
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.jira-card:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 12px -2px rgba(9, 30, 66, 0.08), 0 0 1px rgba(9, 30, 66, 0.2);
+}
+
+.jira-card:active {
+  transform: scale(0.995) translateY(0);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c1c7d0;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a5b2c6;
+}

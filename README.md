@@ -4,7 +4,7 @@ A lightweight, single-screen CRM for sales reps: track leads, log every discussi
 
 Built for the PravarAI coding assessment. **Stack:** Next.js (App Router, TypeScript, Tailwind) · FastAPI · SQLAlchemy 2 · SQLite by default, PostgreSQL (Neon / Docker Compose) via one env var.
 
-> **Status:** specification complete, implementation in progress. Setup commands below describe the target layout and are verified on a clean clone before the release commit. Design and behaviour: [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md), [ARCHITECTURE.md](ARCHITECTURE.md), [docs/API.md](docs/API.md), [docs/UI_SPEC.md](docs/UI_SPEC.md).
+> **Status:** Complete and verified (`make lint`, `make test`, `make seed`). Design and behaviour specs: [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md), [ARCHITECTURE.md](ARCHITECTURE.md), [docs/API.md](docs/API.md), [docs/UI_SPEC.md](docs/UI_SPEC.md).
 
 ## Features
 
@@ -18,34 +18,43 @@ Built for the PravarAI coding assessment. **Stack:** Next.js (App Router, TypeSc
 
 ## Quick start (no Docker needed)
 
-Prerequisites: Python 3.12+, Node.js 20+, and `make` (or run the commands in the Makefile by hand).
+Prerequisites: Python 3.9+, Node.js 18+.
+
+### 1. Backend (Terminal 1)
 
 ```bash
-git clone <repo-url> leadflow && cd leadflow
-make setup          # creates backend/.venv, installs backend and frontend deps, copies .env examples
-make seed           # demo data (safe to run repeatedly)
-make dev-api        # terminal 1: API on http://localhost:8000  (docs at /docs)
-make dev-web        # terminal 2: app on http://localhost:3000
-```
-
-With no configuration the API uses a local SQLite file (`backend/leadflow.db`). Delete it to reset.
-
-### Without `make` (manual)
-
-```bash
-# backend
 cd backend
-python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+python3 -m venv .venv
+source .venv/bin/activate       # On Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
 cp .env.example .env
-python -m app.seed
-uvicorn app.main:app --reload
+python -m app.seed              # Seed 6 demo leads
+uvicorn app.main:app --reload --port 8000
+```
+- API is running at: http://localhost:8000
+- Interactive Swagger docs: http://localhost:8000/docs
+- Uses local SQLite database (`backend/leadflow.db`) by default.
 
-# frontend (second terminal)
+### 2. Frontend (Terminal 2)
+
+```bash
 cd frontend
 npm install
 cp .env.example .env.local
 npm run dev
+```
+- App is running at: http://localhost:3000
+
+---
+
+### Alternative: Using `make` (shortcut)
+
+If you prefer using `make`:
+```bash
+make setup          # Creates backend venv, installs all deps, copies .env examples
+make seed           # Seeds demo data
+make dev-api        # Runs uvicorn backend on :8000
+make dev-web        # Runs Next.js frontend on :3000
 ```
 
 ## Using PostgreSQL
@@ -80,10 +89,25 @@ App at http://localhost:3000, API docs at http://localhost:8000/docs. Postgres r
 
 ## Tests and checks
 
+Run tests:
 ```bash
-make test     # backend pytest + frontend vitest
-make lint     # ruff + eslint + tsc --noEmit
+# Backend pytest
+cd backend && pytest
+
+# Frontend vitest
+cd frontend && npm test -- --run
 ```
+
+Run linters and typechecks:
+```bash
+# Backend ruff
+cd backend && ruff check .
+
+# Frontend eslint & typescript
+cd frontend && npm run lint && npx tsc --noEmit
+```
+
+*(Or via Makefile shortcuts: `make test` and `make lint`)*
 
 The backend suite runs on SQLite; set `DATABASE_URL` to a Postgres URL to run it there too (see [docs/TESTING.md](docs/TESTING.md)).
 
