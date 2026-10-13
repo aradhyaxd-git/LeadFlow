@@ -2,16 +2,15 @@
 
 Instructions for AI coding agents (Antigravity, Claude Code, Cursor, etc.) working in this repo. Humans: this is also a fair summary of how the code is meant to be written.
 
-**Read first, in this order:** `docs/PRODUCT_SPEC.md` (what), `ARCHITECTURE.md` (how), `docs/API.md` (contract), `docs/UI_SPEC.md` (look and behaviour), `docs/IMPLEMENTATION_PLAN.md` (order of work). If two docs disagree, `docs/API.md` wins for the contract and `docs/PRODUCT_SPEC.md` wins for behaviour. Fix the loser in the same commit.
+**Read first, in this order:** `docs/PRODUCT_SPEC.md` (what), `ARCHITECTURE.md` (how), `docs/API.md` (contract), `docs/UI_SPEC.md` (look and behaviour). If two docs disagree, `docs/API.md` wins for the contract and `docs/PRODUCT_SPEC.md` wins for behaviour. Fix the loser in the same commit.
 
 ## How to work
 
-1. **One phase at a time**, from `docs/IMPLEMENTATION_PLAN.md`. Do not start the next phase until the current phase's "Done when" checks pass.
-2. **Plan, then code.** For each phase, state the plan (files to create or change) before writing code.
-3. **Run the checks yourself** (`make lint`, `make test`) and read the output. Never claim something works without running it. If you could not run something, say so explicitly.
-4. **Commit at the end of every phase** using the commit message given in the plan. The app must run at every commit.
-5. **Stay in scope.** Do not add auth, pagination, migrations, websockets or new dependencies that are not listed below. If you think something is missing, write it in `docs/OPEN_QUESTIONS.md` instead of building it.
-6. **No invented facts.** Do not fabricate endpoints, fields or library APIs. If unsure about a library API, read its docs or the installed source.
+1. **Plan, then code.** State the plan (files to create or change) before writing code.
+2. **Run the checks yourself** (`make lint`, `make test`) and read the output. Never claim something works without running it. If you could not run something, say so explicitly.
+3. **Commit using conventional commits.** The app must run at every commit.
+4. **Stay in scope.** Do not add auth, pagination, migrations, websockets or new dependencies that are not listed below.
+5. **No invented facts.** Do not fabricate endpoints, fields or library APIs. If unsure about a library API, read its docs or the installed source.
 
 ## Stack (pinned choices)
 
@@ -70,5 +69,4 @@ Conventional commits, atomic, message body explains why. AI-assisted commits end
 - [ ] Code matches docs; docs updated if behaviour changed
 - [ ] `make lint` and `make test` pass (output read, not assumed)
 - [ ] Manual check performed for UI phases (screenshots or a described walkthrough)
-- [ ] Committed with the planned message
-- [ ] Anything skipped or uncertain is written down in `docs/OPEN_QUESTIONS.md`
+- [ ] Committed with a clear, concise commit message
